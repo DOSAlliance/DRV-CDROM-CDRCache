@@ -1,5 +1,5 @@
  ; This file is part of CDRcache, the 386/XMS DOS CD-ROM cache by
- ; Eric Auer (eric@coli.uni-sb.de), based on LBAcache, 2001-2003.
+ ; Eric Auer (eric@coli.uni-sb.de), based on LBAcache, 2001-2004.
 
  ; CDRcache is free software; you can redistribute it and/or modify
  ; it under the terms of the GNU General Public License as published
@@ -186,31 +186,68 @@ clgdigitsSpace:
 
 ; --------------
 
-cldigits:		; VERY simple argument: factor 1..99 for
-			; 1..99 * *128* sectors buffer
+cldigits:		; numeric argument: cache size in kbytes
+			; (but 1..99 means 1..99 *128* sectors buffer!)
 %if SYNDEBUG
 	mov byte [cs:synerr],'#'
 %endif
-	mov ax,[es:bx]
-	cmp al,'0'
-	jb clhelp_jump	; not even a first digit? error!
-	cmp al,'9'
-	ja clhelp_jump	; not even a first digit? error!
-	cmp ah,'0'
-	jb singledigit	; no 2nd digit found
-	cmp ah,'9'
-	jbe twodigits	; 2nd digit found
-singledigit:
-	mov ah,al	; make the only digit the least significant one
-	mov al,'0'	; add "2nd" digit more significant if none found
-twodigits:
-	sub ax,'00'
-	jz clhelp_jump	; value 0 is not allowed!
-	xchg al,ah	; low byte is first, more significant digit!
-	aad 10		; AAD: ah = 0, al = ah*10 + al
-	mov ah,0
-	shl ax,7	; *** factor is *128*
+	push cx		; will hold the converted number
+	xor cx,cx
+
+cldigloop:
+	mov al,[es:bx]
+	inc bx
+	cmp al,' '	; end of argument or buffer?
+	jbe cldigdone
+	sub al,'0'	; convert to binary
+	cmp al,9	; valid digit?
+	jbe cldigok
+
+cldigbug:
+%if SYNDEBUG
+	mov [cs:synerr+1],al	; store offending digit
+%endif
+	pop cx		; restore CX!
+	jmp clhelp	; show help / error message
+
+cldigover:		; numeric overflow
+	mov al,'+'	; error code for that
+	jmp short cldigbug
+
+cldigok:
+	mov ah,0	; or use CBW ...
+	cmp cx,65535/10	; can value get out of 16 bit range?
+	jae cldigover
+	push ax
+	push dx
+	mov ax,10	; base of number is 10
+	xor dx,dx	; or use CWD ...
+	mul cx		; multiply old value by 10
+	mov cx,ax	; update intermediate result
+	pop dx
+	pop ax
+	add cx,ax	; add new digit as lowest one
+	jmp short cldigloop	; scan for more digits
+
+cldigdone:
+	mov ax,cx	; size (in kbytes)
+	cmp ax,100	; for compatibility with old syntax: values
+	jae cldignorm	; 1..99 mean 1..99 * 256 kbytes (N/4 MB)
+	shl ax,8	; multiply with 256
+cldignorm:
+	inc ax		; round up (overflow check already done above)
+	shr ax,1	; sector size is 2 kB, so N kB is N/2 sectors
+	jz cldigiszero	; "zero" cache size means "default"
+	test ax,127	; multiple of 128 sectors (1/4 MB)?
+	jz cldigisround
+	or ax,127	; else round UP to multiple of 128 sectors ...
+	inc ax
+	js cldigover	; oops, rounded up to 32768 sectors, overflow!
+cldigisround:
 	mov [cs:sectors],ax	; write the selected cache size
+cldigiszero:
+
+	pop cx		; restore CX!
 
 	; ignore all following text (can be used for comments)
 
@@ -237,9 +274,12 @@ synerr	db "1 ",13,10
 	db "  cachename Name that CDRCACHE should give itself. You can",13,10
 	db "            then tell SHSUCDX/MSCDEX/... that name instead",13,10
 	db "            of the name of the CD-ROM driver to use this cache.",13,10
-	db "  size      The buffer size. Maximum value: 99. The unit of",13,10
-	db "            size is 256 kilobytes (allocated in XMS).",13,10
-	db "  comments  Everything after the 3rd argument is ignored, so",13,10
-	db "            you can use the comment argument for comments.",13,10
+	db "  size      The cache size in kilobytes of XMS, 128 to 65280.",13,10
+	db "  comments  (Everything after the 3rd argument is ignored.)",13,10
+	db 13,10
+	db "After loading, the cache can be configured by sending text to the",13,10
+	db "device: if you loaded it with cachename being CDRCACH$ for example,",13,10
+	db "you can do 'echo ? > CDRCACH$' to get help and 'echo S > CDRCACH$'",13,10
+	db "to make cache statistics appear on screen (not redirectable).",13,10
 	db 0
 

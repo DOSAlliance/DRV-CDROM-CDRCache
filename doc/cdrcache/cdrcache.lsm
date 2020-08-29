@@ -1,6 +1,6 @@
 Begin3
-Title: cdrcache (cdrcache-devel)
-Version: 2003-10-14
+Title: cdrcache
+Version: 2004-05-13
 Entered-date: 2003-10-08
 Description: CD-ROM cache, caches reads for one drive, XMS, 386 or better
 Keywords: cache, freedos, smartdrv, cd-rom

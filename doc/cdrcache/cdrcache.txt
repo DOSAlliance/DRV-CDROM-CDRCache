@@ -56,11 +56,18 @@ write data to that device to force a cache flush or to have
 some status information like cache statistics shown on screen.
 Currently recognized command letters are:
 
-F - Flush cache    S - show Statistics    C - Clear statistics
-Q - Quiet mode     N - normal verbosity   V - verbose/trace mode
-0 - stop caching   1 - continue caching   ? - show help message
+F - Flush cache    C - Clear statistics    S - show Statistics
+I - show technical Information and statistics (new 5/2004)
+Q - Quiet mode      N - normal verbosity   V - verbose/trace mode
+0 - stop caching    1 - continue caching
+? - show help text
 
 All other input to the user interface is ignored.
+
+The new "tech info" display shows the same information as the
+"statistics" display of older CDRcaches before 5/2004. The
+normal statistics display has been beautified in newer versions
+and has been reduced to show only "easy to understand" values.
 
 Reading from the device currently causes statistics display
 and returns an error if you try to do it more than once every
@@ -88,8 +95,11 @@ To load:     CDRCACHE  device name size
          cached requests will be handled by CDRcache, all others
          will be passed on to the real CD-ROM driver device.
 
-  size   Specifies the buffer size. Maximum value: 99.
-         Unit is 256 kilobytes (which are allocated in XMS).
+  size   Specifies the XMS cache size in kilobytes, range is
+         128 to 65280. Values below 100 are interpreted as size
+         in units of 1/4 MBytes for backwards compatibility with
+         CDRcache versions before 5/2004. Values are rounded up
+         to multiples of 1/4 MByte.
 
 If you do not give acceptable values for those options, an
 help screen will be displayed. Note that if you set name to
@@ -152,9 +162,9 @@ current setting is 8 sub entries per main entry - thus you need
 * Memory consumption details and loading methods *
 
 
-Normally, memory usage is limited to 18k (5k for the driver and
-up to 12.5k for managing up to 25 MB of XMS. You can use either
-DEVICE or DEVICEHIGH to load the driver, so either low DOS
+Normally, memory usage is limited to 38k (5.5k for the driver and
+up to 32k for managing up to almost 64 MB of XMS. You can use
+either DEVICE or DEVICEHIGH to load the driver, so either low DOS
 memory or high UMB memory can be used. For each 256k of XMS that
 you allocate, 128 bytes of DOS RAM are allocated (currently).
 

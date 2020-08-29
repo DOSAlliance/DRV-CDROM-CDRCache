@@ -1,5 +1,5 @@
  ; This file is part of CDRcache, the 386/XMS DOS CD-ROM cache by
- ; Eric Auer (eric@coli.uni-sb.de), based on LBAcache, 2001-2003.
+ ; Eric Auer (eric@coli.uni-sb.de), based on LBAcache, 2001-2004.
 
  ; CDRcache is free software; you can redistribute it and/or modify
  ; it under the terms of the GNU General Public License as published
@@ -34,10 +34,10 @@ clearmsg	db 13,10,"Resetting statistics of this CDRcache.",13,10,0
 sleepmsg	db 13,10,"Putting this CDRcache to sleep.",13,10,0
 wakeupmsg	db 13,10,"Waking this CDRcache up.",13,10,0
 
-uihelpmsg	db 13,10,"CDRcache user commands (? = this help):",13,10
-		db "F = flush cache   S = show statistics",13,10
-		db "Q = quiet mode    C = clear statistics",13,10
-		db "N = normal mode   V = verbose mode",13,10
+uihelpmsg	db 13,10,"CDRcache user commands:",13,10
+		db "F = flush cache   C = clear statistics",13,10
+		db "S = show stats    I = show tech. info   ? = show help",13,10
+		db "Q = quiet mode    V = verbose mode      N = normal mode",13,10
 		db "0 = stop caching  1 = continue caching",13,10,0
 
 verbositymsg	db 13,10,"Setting CDRcache verbosity level to ",0
@@ -56,13 +56,13 @@ infolist1	dw rdhit,rhitmsg+0x8000
 		dw xmssize, xmsinfomsg+0x8000
 		dw 0,0
 
-rhitmsg		db "read  hits:   ",0
-rmissmsg	db "read  misses: ",0
-xmsinfomsg	db "XMS handle has size (in kB) ",0
+rhitmsg		db "read  hits   in sectors:    ",0
+rmissmsg	db "read  misses in sectors:    ",0
+xmsinfomsg	db "cache size   in kiloBytes:  ",0
 
 	; we get log2 of this information in 2a: hi(tabsz) 2b: lo(tabsz)
-tabinf2a	db   "sectors per bin in table:   ",0
-tabinf2b	db "bytes per bin in table:     ",0
+tabinf2a	db "sectors per bin in table:       ",0
+tabinf2b	db "bytes   per bin in table:       ",0
 
 	; things to show in HEXADECIMAL
 infolist2	dw   hint, tabinf1+0x4000
@@ -72,19 +72,21 @@ infolist2	dw   hint, tabinf1+0x4000
 		dw   oldstra, clientdevsmsg+0x8000
 		dw 0,0
 		
-tabinf1 	db "table offset (hex.):        0x",0
-xmshandmsg	db "Driver XMS handle is number 0x",0
-xmsptrmsg	db "XMS pointer used:           0x",0
-clientdevimsg	db "Chained device intr. is at  0x",0
-clientdevsmsg	db "Chained device strat. is at 0x",0
+tabinf1 	db "table offset in driver:       0x",0
+xmshandmsg	db "Used XMS handle number:       0x",0
+xmsptrmsg	db "Used XMS handler    is at 0x",0
+clientdevimsg	db "Chained dev. intr.  is at 0x",0
+clientdevsmsg	db "Chained dev. strat. is at 0x",0
 
 	; special: extra processing for more human readable output
-hrdmsg		db "*** kilo-reads:      ",0
-hhitmsg		db "percentage of hits:  ",0
+hrdmsg		db "MegaBytes  read in total:       ",0
+hhitmsg		db "percentage of cache hits:       ",0
 
 
 twocolumns	db 0	; *** 11/2002 start with one column
-		; *** also new 11/2002: string lengths tuned :-)
+		; low bit: 0=crlf 1=tab after message
+		; bit 1: 0=nothing 2=toggle low bit after message
+showtech	db 0	; *** 5/2004: set to show tech info in stats
 
 ; -------------------------------------------------------------
 
@@ -110,7 +112,8 @@ copynameloop:
 
 writeUI:		; currently allowed commands are:
 			; F for FLUSH
-			; S for STATISTICS
+			; S for STATISTICS (less verbose 5/2004)
+			; I for INFO (detailled statistics - new 5/2004)
 			; C to  CLEAR STATISTICS
 			; 0 to  disable caching (sleep)
 			; 1 to  enable caching (wakeup)
@@ -151,11 +154,20 @@ wrUIscanon:
 wrUInoFfound:
 	cmp al,'S'		; S for STATISTICS
 	jnz wrUInoSfound
+	clc
 	call readUI			; SHOW STATISTICS
 					; NO extra message
 	jmp wrUIendloop			; do NOT show client dev name
 
 wrUInoSfound:
+	cmp al,'I'		; I for INFORMATION and STATISTICS
+	jnz wrUInoIfound
+	stc
+	call readUI			; SHOW INFORMATION / STATISTICS
+					; NO extra message
+	jmp wrUIendloop			; do NOT show client dev name
+
+wrUInoIfound:
 	cmp al,'C'		; C for CLEAR STATISTICS
 	jnz wrUInoCfound
 	push eax
@@ -244,9 +256,14 @@ wrUInonefound:
 readUI:			; show information about cache status
 			; up to word [...+0x12] bytes can be returned
 			; to the user buffer, pointer is at [...+0x0e].
+
+	mov al,0	; *** verbose if called with carry flag set (5/2004)
+	adc al,0		; set if carry is set
+	mov [cs:showtech],al	; whether to show tech info
+
 	call copyclientname
 
-	pusha		; (currently only on screen using BIOS TTY)
+	pusha			; (currently only on screen using BIOS TTY)
 	push eax
 	push es
 	push ds
@@ -312,6 +329,10 @@ infodone1:
 ; ----------------------
 
 tablehints:			; decode table property description bits
+	mov al,[cs:showtech]	; *** verbose mode active? (5/2004)
+	or al,al
+	jz infodone2		; *** else skip table info and tech info
+
 	mov ax,[es:tabsz]	; READ VALUE FROM DRIVER
 	and ax,0x0f0f		; ignore undefined bits
 	push cx
@@ -367,8 +388,8 @@ humanreadable:
 	adc edx,edx
 		push eax	; * save (low part of) sum for percent
 
-	mov ebx,1000
-	div ebx			; transform (sum!) to k
+	mov ebx,512		; 512 CD-ROM sectors are 1 MegaByte
+	div ebx			; transform (sum!) to MBytes
 	xor edx,edx
 		call hex2dec	; transform to packed BCD
 	mov si,hrdmsg+0x4000	; human readable read message, 16bit
@@ -459,19 +480,30 @@ pmloopdone:
 	  pop ax
 	test si,0xc000	; any bytes to show? <<<
 	jz pmdone	; if none, done
+	  mov dl,cl	; save CL
 	  push ax
 	mov ax,si
 	shr ax,12	; how many nibbles to show
 	and al,12	; only 4/8/12, which is    <<<
 			; AX EAX ? (2, 4, 6 bytes) <<<
 	mov dh,al	; as a counter
-	  mov dl,cl	; save
 	mov cl,8	; max 8 nibbles
 	sub cl,dh	; how many nibbles not to show
 	shl cl,2	; nibbles -> bits
 	  pop ax
 	shl eax,cl	; make EAX "left-bound"
-	  mov cl,dl	; restore
+
+	push si
+	and si,0x3fff	; mask out our flags (offset is max 16k)
+scanhx:	inc si		; find end of string
+	cmp byte [si],0
+	jnz scanhx
+	cmp word [si-2],'0x'	; did string end with "0x"?
+	pop si
+	mov cl,'*'	; *** do not suppress leading zeroes for HEX
+	jz showeaxlp
+	mov cl,'0'	; *** start suppressing leading zeroes for DEC
+
 
 showeaxlp:
 	rol eax,4	; move digit to show in lowest pos
@@ -481,11 +513,28 @@ showeaxlp:
 	cmp al,'9'
 	jbe nothex
 	add al,7	; 'A'-('9'+1)
-nothex:	mov dl,al
+
+nothex:	cmp al,cl	; *** leading zero to be suppressed?
+	jnz notzero
+	mov al,'_'	; *** SUPPRESS leading zero!
+	jmp short waszero
+notzero:
+	mov cl,'*'	; *** stop suppressing leading zeroes
+waszero:
+
+	mov dl,al
 	call pmtty	; TTY CHAR
 	  pop ax
+
+	cmp dh,2	; *** last digit to follow now?
+	jnz notend
+	mov cl,'*'	; *** do not ever suppress last digit...
+notend:
+
 	dec dh
 	jnz showeaxlp	; on to the next digit
+
+	mov cl,dl	; restore CL
 
 pmdone:	test byte [cs:twocolumns],1	; TAB instead of CRLF ?
 	jz pmdocrlf		; use CRLF

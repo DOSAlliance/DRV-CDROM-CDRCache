@@ -320,7 +320,7 @@ getmediachanged:
 				; else unknown or even changed!
 				; changed also happens on 1st access!?
 %if VERBOSE
-	cmp word [cs:verbosity],1	; NORMAL verbosity?
+	cmp word [cs:verbosity],2	; HIGH (was: NORMAL) verbosity?
 	jb unverbose4
 	push word changedmsg
 	call meep
@@ -386,6 +386,11 @@ readuncached:
 	mov al,[es:bx+0x0d]	; AL low nibble 1 if RedBook is to blame
 	shl al,4
 	or al,[es:bx+0x18]	; AH high nibble 1 if raw read is to blame
+	or ax,ax		; neither to blame?
+	jnz readuc2
+	mov al,[es:bx+0]	; request header length
+	mov ah,0x0ee		; error code
+readuc2:
 	push word formatmsg	; we cannot serve this from cache
 	call meep
 unverbose6:

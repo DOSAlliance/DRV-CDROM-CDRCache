@@ -169,7 +169,7 @@ quitinst:
 xmserr	db 'CDRCACHE: XMS error.',7,0
 
 hello	db 'CD-ROM XMS/386 read cache, '
-	db   'E. Auer <eric@coli.uni-sb.de> 2001-2003',13,10
+	db   'E. Auer <eric@coli.uni-sb.de> 2001-2004',13,10
 	db 'License: GPL 2. '
 
 align 8,db ' '	; align with spaces :-)
